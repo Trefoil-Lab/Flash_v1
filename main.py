@@ -9,70 +9,78 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QGroupBox,
 )
+from PyQt6 import QtGui
+import pyqtgraph as pg
+import numpy as np
 import interface
 from MainWindow import Ui_MainWindow
+
+E_FIELD_COLOR_STR = '#00FFFF'
+CURRENT_DENSITY_COLOR_STR = '#FF0000'
+POWER_DENSITY_COLOR_STR = '#FFFF00'
+TEMPERATURE_COLOR_STR = '#00FF00'
+
 
 def main():
     app = QApplication(sys.argv)
 
-    window = test_MainWindow()
+    window = MainWindow()
     window.show()
 
     app.exec()
 
-class test_MainWindow(QMainWindow, Ui_MainWindow):
+class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self, *args, obj=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.setupUi(self)
 
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle('Hello world!')
+        # custom initialization below
+
+        self.setWindowTitle('Flash_v1')
+
+        # set parameter label colors
+        self.eFieldLabel.setStyleSheet(f'QLabel {{color: {E_FIELD_COLOR_STR}}}')
+        self.currentDensityLabel.setStyleSheet(f'QLabel {{color: {CURRENT_DENSITY_COLOR_STR}}}')
+
+        # graph 1
+        self.graph1 = pg.PlotWidget()
+        self.graph1.setSizePolicy(self.graphPlaceholder1.sizePolicy())
+        self.graph1.setMinimumSize(self.graphPlaceholder1.minimumSize())
+        self.graph1.setObjectName('graph1')
+        self.GraphBox.replaceWidget(self.graphPlaceholder1, self.graph1)
+        self.graphPlaceholder1.hide()
+
+        # graph 2
+        self.graph2 = pg.PlotWidget()
+        self.graph2.setSizePolicy(self.graphPlaceholder2.sizePolicy())
+        self.graph2.setMinimumSize(self.graphPlaceholder2.minimumSize())
+        self.graph2.setObjectName('graph2')
+        self.GraphBox.replaceWidget(self.graphPlaceholder2, self.graph2)
+        self.graphPlaceholder2.hide()
+
+        # plot test data
+        time = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        J = np.random.rand(len(time))
+        P = np.random.rand(len(time))
+        T = np.random.rand(len(time))
+        E = np.random.rand(len(time))
+
+        self.graph1.plot(time, E, pen=pg.mkPen(color=E_FIELD_COLOR_STR))
+        self.graph1.plot(time, J, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR))
+        self.graph2.plot(time, P, pen=pg.mkPen(color=POWER_DENSITY_COLOR_STR))
+        self.graph2.plot(time, T, pen=pg.mkPen(color=TEMPERATURE_COLOR_STR))
+
+        self.graph1.setLabel('left', 'E-field', color=E_FIELD_COLOR_STR)
+        self.graph1.setLabel('right', 'Current Density', color=CURRENT_DENSITY_COLOR_STR)
+
+        self.graph2.setLabel('left', 'Power Density', color=POWER_DENSITY_COLOR_STR)
+        self.graph2.setLabel('right', 'Temperature', color=TEMPERATURE_COLOR_STR)
+
+        self.graph1.setBackground(background=None)
+        self.graph2.setBackground(background=None)
 
 
-        # material data
-        mat_param_box = QGroupBox()
-        mat_param_label = QLabel()
-        mat_param_label.setText('Material Parameters')
-        mat_param_box.add (mat_param_label)
 
-        # electrical data
-        elec_param_box = QVBoxLayout()
-        elec_param_label = QLabel()
-        elec_param_label.setText('Electrical Parameters')
-        elec_param_box.addChildWidget(elec_param_label)
-        
-        # parameters container
-        param_container = QVBoxLayout()
-        param_container.addChildLayout(mat_param_box)
-        param_container.addChildLayout(elec_param_box)
-
-        # graphs container
-        graphs_container = QHBoxLayout()
-
-        # left graph
-
-
-        # content container (paramaters, graphs)
-        content_container = QHBoxLayout()
-        content_container.addChildLayout(param_container)
-        content_container.addChildLayout(graphs_container)
-
-        # controls container
-        controls_container = QHBoxLayout()
-        controls_start = QPushButton()
-        controls_start.setText('Start')
-        controls_container.addChildWidget(controls_start)
-
-        top_level = QVBoxLayout()
-        top_level.addChildLayout(controls_container)
-        top_level.addChildLayout(content_container)
-        self.setCentralWidget(top_level)
-        
-
-    def button_press(self):
-        self.button.setText("Clicked!")
 
 if __name__ == "__main__":
     main()
