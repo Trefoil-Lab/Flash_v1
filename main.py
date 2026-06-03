@@ -34,9 +34,19 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super().__init__(*args, **kwargs)
         self.setupUi(self)
 
-        # custom initialization below
+        ###############################
+        # custom initialization below #
+        ###############################
 
         self.setWindowTitle('Flash_v1')
+
+        # connect buttons
+        self.applyButton.clicked.connect(self.applyPress)
+        self.connectionButton.clicked.connect(self.connectionTogglePress)
+        self.startButton.clicked.connect(self.startPress)
+        self.endButton.clicked.connect(self.endPress)
+        self.loadPresetButton.clicked.connect(self.loadPresetPress)
+        self.storePresetButton.clicked.connect(self.storePresetPress)
 
         # set parameter label colors
         self.eFieldLabel.setStyleSheet(f'QLabel {{color: {E_FIELD_COLOR_STR}}}')
@@ -59,6 +69,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.graphPlaceholder2.hide()
 
         # plot test data
+
         time = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         J = np.random.rand(len(time))
         P = np.random.rand(len(time))
@@ -79,8 +90,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.graph1.setBackground(background=None)
         self.graph2.setBackground(background=None)
 
+    def applyPress(self):
+        pass
 
+    def connectionTogglePress(self):
+        pass
 
+    def startPress(self):
+        pass
+
+    def endPress(self):
+        pass
+
+    def loadPresetPress(self):
+        pass
+
+    def storePresetPress(self):
+        pass
 
 if __name__ == "__main__":
     main()

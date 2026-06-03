@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>525</width>
-    <height>416</height>
+    <width>592</width>
+    <height>440</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -76,6 +76,32 @@
          </property>
         </spacer>
        </item>
+       <item>
+        <widget class="QLabel" name="sampleRateLabel">
+         <property name="text">
+          <string>Sample Rate</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QDoubleSpinBox" name="sampleRateDoubleSpinBox">
+         <property name="suffix">
+          <string>ms</string>
+         </property>
+         <property name="decimals">
+          <number>0</number>
+         </property>
+         <property name="minimum">
+          <double>10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10000.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>100.000000000000000</double>
+         </property>
+        </widget>
+       </item>
       </layout>
      </widget>
     </item>
@@ -87,7 +113,7 @@
       <item>
        <widget class="QGroupBox" name="ElecBox">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
+         <sizepolicy hsizetype="MinimumExpanding" vsizetype="Minimum">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
@@ -132,7 +158,7 @@
       <item>
        <widget class="QGroupBox" name="MatBox">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="MinimumExpanding" vsizetype="Preferred">
+         <sizepolicy hsizetype="MinimumExpanding" vsizetype="Minimum">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
@@ -176,7 +202,7 @@
          <enum>QLayout::SizeConstraint::SetMaximumSize</enum>
         </property>
         <item>
-         <widget class="QComboBox" name="comboBox">
+         <widget class="QComboBox" name="presetComboBox">
           <property name="editable">
            <bool>true</bool>
           </property>
@@ -189,14 +215,14 @@
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="pushButton_2">
+         <widget class="QPushButton" name="loadPresetButton">
           <property name="text">
            <string>Load</string>
           </property>
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="pushButton_3">
+         <widget class="QPushButton" name="storePresetButton">
           <property name="text">
            <string>Store</string>
           </property>
@@ -208,7 +234,7 @@
            <enum>Qt::Orientation::Vertical</enum>
           </property>
           <property name="sizeType">
-           <enum>QSizePolicy::Policy::Expanding</enum>
+           <enum>QSizePolicy::Policy::Preferred</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
@@ -219,7 +245,7 @@
          </spacer>
         </item>
         <item>
-         <widget class="QPushButton" name="pushButton">
+         <widget class="QPushButton" name="applyButton">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -240,7 +266,7 @@
       <item>
        <widget class="QGraphicsView" name="graphPlaceholder1">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+         <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
@@ -256,7 +282,7 @@
       <item>
        <widget class="QGraphicsView" name="graphPlaceholder2">
         <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+         <sizepolicy hsizetype="Preferred" vsizetype="MinimumExpanding">
           <horstretch>0</horstretch>
           <verstretch>0</verstretch>
          </sizepolicy>
@@ -278,7 +304,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>525</width>
+     <width>592</width>
      <height>33</height>
     </rect>
    </property>
