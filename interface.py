@@ -1,4 +1,5 @@
 import pyvisa
+import time
 
 DC_SOURCE_ADDR = "USB0::0x3121::0x1004::615E25116::INSTR"
 
@@ -50,7 +51,7 @@ class DCSupply:
 def cli():
     PROMPT_STR = '> '
     def help():
-        print('usage: <command> [<arg>]')
+        print('usage: <command> [<arg> [<arg>]]')
         print('commands:')
         print('\tQ\t\texit')
         print('\tH\t\tprint this message')
@@ -59,6 +60,7 @@ def cli():
         print('\tI <curr>\tset current to <curr>')
         print('\tI?\t\tget current setting')
         print('\tM [V|I|P]\tmeasure voltage, current, or power. if unspecified, report all three')
+        print('\tM L [<count>]\tmeasure measurement latency with count iterations. default 1000')
         print()
 
     # create DC source object
@@ -92,17 +94,30 @@ def cli():
                     try:
                         i = float(cmd.split()[1])
                         source.setI(i)
-                    except Exception as e:
+                    except ValueError:
                         print('Invalid command.')
             case 'm': # measure
                 if len(cmd.split()) > 1:
                     match cmd.split()[1]:
-                        case 'v':
+                        case 'v': # voltage
                             print(source.measV())
-                        case 'i':
+                        case 'i': # current
                             print(source.measI())
-                        case 'p':
+                        case 'p': # power
                             print(source.measP())
+                        case 'l': # latency
+                            count : int = 1000
+                            if len(cmd.split()) > 2:
+                                try:
+                                    count = int(cmd.split()[2])
+                                except ValueError:
+                                    print('Invalid command.')
+                                    count  = 1000
+                            time_before = time.perf_counter()
+                            for _ in range(0, count):
+                                source.measV()
+                            elapsed = time.perf_counter() - time_before
+                            print(f'{count} iterations: {elapsed}s, {elapsed/float(count)}s per iteration')
                         case _:
                             print('Invalid command.')
                 else:
