@@ -8,6 +8,7 @@ class Params:
     temperature: float | None
     diameter: float
     height: float
+    sample_interval: float
 
 class GuiSignals(QObject):
     connect = pyqtSignal()
@@ -16,7 +17,12 @@ class GuiSignals(QObject):
     start = pyqtSignal()
     stop = pyqtSignal()
 
+class SampleSignals(QObject):
+    newData = pyqtSignal(tuple) # (time, V, I, P, T)
+
 class ControlSignals(QObject):
+    newData = pyqtSignal(tuple) # (time, E, J, P, T)
+
     connecting = pyqtSignal()
     connected = pyqtSignal()
 

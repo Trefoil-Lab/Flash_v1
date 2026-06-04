@@ -10,7 +10,7 @@ class DCSupply:
         self.addr = addr
 
     def connect(self):
-        self.res : pyvisa.resources.Resource = rm.open_resource(addr)
+        self.res : pyvisa.resources.Resource = rm.open_resource(self.addr)
 
         # make sure this device is what we think it is
         print(self.res.query('*IDN?'))
