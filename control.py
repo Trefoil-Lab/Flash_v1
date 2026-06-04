@@ -22,8 +22,9 @@ class ControlRunner(QRunnable):
         self.supply = DCSupply(self.addr)
 
         # set up sampling thread
+        self.sample_stop_event = Event()
         self.sample_signal = SampleSignals()
-        self.sample_thread = SampleRunner(self.supply, self.supply_lock, self.sample_signal, 0.1)
+        self.sample_thread = SampleRunner(self.supply, self.supply_lock, self.sample_signal, 0.1, self.sample_stop_event)
         # TODO get rate from GUI for sampling
 
         # set up listeners for events from GUI
@@ -58,10 +59,10 @@ class ControlRunner(QRunnable):
 
     def stop(self):
         self.signals.stopping.emit()
+        self.sample_stop_event.set() # tell sampling to stop
         with self.supply_lock:
             self.supply.disable()
-        # TODO stop sample thread
-        # TODO set up event to tell sample thread to stop
+        self.sample_thread.join() # wait for sample thread to stop
         self.signals.stopped.emit()
     
     def receiveData(self, inc_data : tuple[float]):
@@ -73,18 +74,20 @@ class ControlRunner(QRunnable):
         out_data[2] = inc_data[2] / area # current density from current
         out_data[3] = inc_data[3] / area # power density from power
 
+        # TODO use queue to communicate between sampler and control thread to ensure reliability
         # TODO prepare for saving data
         
         self.signals.newData.emit(out_data)
 
 class SampleRunner(Thread):
-    def __init__(self, supply : DCSupply, supply_lock : Lock, sample_signal : SampleSignals, interval : float):
+    def __init__(self, supply : DCSupply, supply_lock : Lock, sample_signal : SampleSignals, interval : float, stop_event : Event):
         super().__init__(self)
 
         self.interval = interval
         self.supply = supply
         self.supply_lock = supply_lock
         self.sample_signal = sample_signal
+        self.stop_event = stop_event
 
     def run(self):
         sc = sched.scheduler(time.perf_counter, time.sleep)
@@ -98,10 +101,11 @@ class SampleRunner(Thread):
             data[0] = time.perf_counter - start_time
             self.sample_signal.newData.emit(data)
 
-            # TODO check event to see if we should continue
-            # schedule next sample
-            next_time = target_time + self.interval
-            sc.enterabs(next_time, 1, sample, argument=(sc, next_time))
+            # check event to see if we should continue
+            if not self.stop_event.is_set():
+                # schedule next sample
+                next_time = target_time + self.interval
+                sc.enterabs(next_time, 1, sample, argument=(sc, next_time))
 
         # schedule first sample
         next_time = start_time + self.interval
