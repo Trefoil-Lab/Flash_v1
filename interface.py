@@ -7,6 +7,9 @@ rm = pyvisa.ResourceManager()
 
 class DCSupply:
     def __init__(self : DCSupply, addr : str):
+        self.addr = addr
+
+    def connect(self):
         self.res : pyvisa.resources.Resource = rm.open_resource(addr)
 
         # make sure this device is what we think it is
@@ -19,6 +22,10 @@ class DCSupply:
         self.setI(0)
         self.setV(0)
         # TODO reset other parameters
+
+    def disconnect(self):
+        self.disable()
+        self.res.close()
 
     def setV(self, v : float) -> None:
         self.res.write(f'volt {v}')
