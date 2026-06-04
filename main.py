@@ -15,6 +15,8 @@ import numpy as np
 import interface
 from MainWindow import Ui_MainWindow
 
+WINDOW_TITLE = 'flash-v1'
+
 E_FIELD_COLOR_STR = '#00FFFF'
 CURRENT_DENSITY_COLOR_STR = '#FF0000'
 POWER_DENSITY_COLOR_STR = '#FFFF00'
@@ -38,7 +40,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # custom initialization below #
         ###############################
 
-        self.setWindowTitle('Flash_v1')
+        self.setWindowTitle(WINDOW_TITLE)
 
         # connect buttons
         self.applyButton.clicked.connect(self.applyPress)
