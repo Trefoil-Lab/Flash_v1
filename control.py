@@ -75,6 +75,10 @@ class ControlRunner(QRunnable):
             area = 0.25 * math.pi * new_params.diameter * new_params.diameter
             with self.supply_lock:
                 self.supply.setI(new_params.curr_density * area)
+
+        # do we need to update sample interval?
+        if new_params.sample_interval != self.params.sample_interval:
+            self.sample_signal.setSampleInterval.emit(new_params.sample_interval)
         
         self.params = new_params
 
@@ -121,6 +125,8 @@ class SampleRunner(Thread):
         self.sample_signal = sample_signal
         self.stop_event = stop_event
 
+        self.sample_signal.setSampleInterval.connect(setSampleInterval)
+
     def run(self):
         sc = sched.scheduler(time.perf_counter, time.sleep)
 
@@ -142,3 +148,6 @@ class SampleRunner(Thread):
         # schedule first sample
         next_time = start_time + self.interval
         sc.enterabs(next_time, 1, sample, argument=(sc, next_time))
+
+    def setSampleInterval(self, interval : float):
+        self.interval = interval

@@ -19,6 +19,7 @@ class GuiSignals(QObject):
 
 class SampleSignals(QObject):
     newDataSig = pyqtSignal(tuple) # (time, V, I, P, T)
+    setSampleInterval = pyqtSignal(float)
 
 class ControlSignals(QObject):
     newDataSig = pyqtSignal(tuple) # (time, E, J, P, T)
