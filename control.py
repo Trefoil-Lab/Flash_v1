@@ -86,14 +86,16 @@ class ControlRunner(QRunnable):
         self.signals.startingSig.emit()
         with self.supply_lock:
             self.supply.enable()
-        # TODO start sample thread
+        self.sample_thread.start() # start sample thread
         self.signals.startedSig.emit()
 
     def stop(self):
         self.signals.stoppingSig.emit()
         self.sample_stop_event.set() # tell sampling to stop
+
         with self.supply_lock:
             self.supply.disable()
+        
         self.sample_thread.join() # wait for sample thread to stop
         self.signals.stoppedSig.emit()
     
@@ -125,7 +127,7 @@ class SampleRunner(Thread):
         self.sample_signal = sample_signal
         self.stop_event = stop_event
 
-        self.sample_signal.setSampleInterval.connect(setSampleInterval)
+        self.sample_signal.setSampleInterval.connect(self.setSampleInterval)
 
     def run(self):
         sc = sched.scheduler(time.perf_counter, time.sleep)
