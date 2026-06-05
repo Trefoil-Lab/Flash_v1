@@ -11,7 +11,7 @@ from gui import MainWindow
 
 
 class ControlRunner(QRunnable):
-    def __init__(self, addr : str, gui : MainWindow, params : Params, data : list[tuple[float]], data_lock : Lock):
+    def __init__(self, addr : str, gui : MainWindow, params : Params):
         super().__init__(self)
         self.signals = ControlSignals()
 
@@ -28,10 +28,14 @@ class ControlRunner(QRunnable):
         # TODO get rate from GUI for sampling
 
         # set up listeners for events from GUI
-        # TODO
+        gui.signals.connectSig.connect(self.connect)
+        gui.signals.disconnectSig.connect(self.disconnect)
+        gui.signals.setParamsSig.connect(self.disconnect)
+        gui.signals.startSig.connect(self.connect)
+        gui.signals.stopSig.connect(self.connect)
         
         # set up listener for newData event from sample collector
-        # TODO
+        self.sample_thread.sample_signal.newDataSig.connect(self.receiveData)
 
     @pyqtSlot
     def run(self):
@@ -39,31 +43,31 @@ class ControlRunner(QRunnable):
         self.exec() # run event loop
 
     def connect(self):
-        self.signals.connecting.emit()
+        self.signals.connectingSig.emit()
         with self.supply_lock:
             self.supply.connect()
-        self.signals.connected.emit()
+        self.signals.connectedSig.emit()
 
     def disconnect(self):
-        self.signals.disconnecting.emit()
+        self.signals.disconnectingSig.emit()
         with self.supply_lock:
             self.supply.disconnect()
-        self.signals.disconnected.emit()
+        self.signals.disconnectedSig.emit()
 
     def start(self):
-        self.signals.starting.emit()
+        self.signals.startingSig.emit()
         with self.supply_lock:
             self.supply.enable()
         # TODO start sample thread
-        self.signals.started.emit()
+        self.signals.startedSig.emit()
 
     def stop(self):
-        self.signals.stopping.emit()
+        self.signals.stoppingSig.emit()
         self.sample_stop_event.set() # tell sampling to stop
         with self.supply_lock:
             self.supply.disable()
         self.sample_thread.join() # wait for sample thread to stop
-        self.signals.stopped.emit()
+        self.signals.stoppedSig.emit()
     
     def receiveData(self, inc_data : tuple[float]):
         area = 0.25 * math.pi * self.params.diameter * self.params.diameter
@@ -77,7 +81,7 @@ class ControlRunner(QRunnable):
         # TODO use queue to communicate between sampler and control thread to ensure reliability
         # TODO prepare for saving data
         
-        self.signals.newData.emit(out_data)
+        self.signals.newDataSig.emit(out_data)
 
 class SampleRunner(Thread):
     def __init__(self, supply : DCSupply, supply_lock : Lock, sample_signal : SampleSignals, interval : float, stop_event : Event):
@@ -99,7 +103,7 @@ class SampleRunner(Thread):
             with self.supply_lock:
                 data = (0, self.supply.measV(), self.supply.measI(), self.supply.measP(), random.random())
             data[0] = time.perf_counter - start_time
-            self.sample_signal.newData.emit(data)
+            self.sample_signal.newDataSig.emit(data)
 
             # check event to see if we should continue
             if not self.stop_event.is_set():

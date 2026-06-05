@@ -1,5 +1,5 @@
 import sys
-from PyQt6.QtCore import QSize, Qt
+from PyQt6.QtCore import QSize, Qt, QThreadPool
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -14,6 +14,10 @@ import pyqtgraph as pg
 import numpy as np
 import interface
 from MainWindow import Ui_MainWindow
+from util import GuiSignals
+from control import ControlRunner
+
+DC_SOURCE_ADDR = "USB0::0x3121::0x1004::615E25116::INSTR"
 
 WINDOW_TITLE = 'flash-v1'
 
@@ -42,11 +46,32 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.setWindowTitle(WINDOW_TITLE)
 
+        # set up control thread
+        self.signals = GuiSignals()
+        self.threadpool = QThreadPool()
+        self.control_thread = ControlRunner(DC_SOURCE_ADDR, self, None)
+        
+        # set up control signal listeners
+        self.control_thread.signals.newDataSig.connect(self.receiveData)
+        self.control_thread.signals.connectingSig.connect(self.connecting)
+        self.control_thread.signals.connectedSig.connect(self.connected)
+        self.control_thread.signals.disconnectingSig.connect(self.disconnecting)
+        self.control_thread.signals.disconnectedSig.connect(self.disconnected)
+        self.control_thread.signals.settingParamsSig.connect(self.settingParams)
+        self.control_thread.signals.setParamsDoneSig.connect(self.setParamsDone)
+        self.control_thread.signals.startingSig.connect(self.starting)
+        self.control_thread.signals.startedSig.connect(self.started)
+        self.control_thread.signals.stoppingSig.connect(self.stopping)
+        self.control_thread.signals.stoppedSig.connect(self.stopped)
+
+        # start control thread
+        self.threadpool.start(self.control_thread)
+
         # connect buttons
         self.applyButton.clicked.connect(self.applyPress)
         self.connectionButton.clicked.connect(self.connectionTogglePress)
         self.startButton.clicked.connect(self.startPress)
-        self.endButton.clicked.connect(self.endPress)
+        self.stopButton.clicked.connect(self.stopPress)
         self.loadPresetButton.clicked.connect(self.loadPresetPress)
         self.storePresetButton.clicked.connect(self.storePresetPress)
 
@@ -92,6 +117,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.graph1.setBackground(background=None)
         self.graph2.setBackground(background=None)
 
+    #########################
+    # button press handlers #
+    #########################
+
     def applyPress(self):
         pass
 
@@ -101,13 +130,50 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def startPress(self):
         pass
 
-    def endPress(self):
+    def stopPress(self):
         pass
 
     def loadPresetPress(self):
         pass
 
     def storePresetPress(self):
+        pass
+
+    ###########################
+    # control signal handlers #
+    ###########################
+
+    def receiveData(self, data : tuple[float]):
+        pass
+
+    def connecting(self):
+        pass
+
+    def connected(self):
+        pass
+
+    def disconnecting(self):
+        pass
+
+    def disconnected(self):
+        pass
+
+    def settingParams(self):
+        pass
+
+    def setParamsDone(self):
+        pass
+
+    def starting(self):
+        pass
+
+    def started(self):
+        pass
+
+    def stopping(self):
+        pass
+
+    def stopped(self):
         pass
 
 if __name__ == "__main__":

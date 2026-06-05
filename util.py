@@ -11,29 +11,29 @@ class Params:
     sample_interval: float
 
 class GuiSignals(QObject):
-    connect = pyqtSignal()
-    disconnect = pyqtSignal()
-    setParams = pyqtSignal(Params)
-    start = pyqtSignal()
-    stop = pyqtSignal()
+    connectSig = pyqtSignal()
+    disconnectSig = pyqtSignal()
+    setParamsSig = pyqtSignal(Params)
+    startSig = pyqtSignal()
+    stopSig = pyqtSignal()
 
 class SampleSignals(QObject):
-    newData = pyqtSignal(tuple) # (time, V, I, P, T)
+    newDataSig = pyqtSignal(tuple) # (time, V, I, P, T)
 
 class ControlSignals(QObject):
-    newData = pyqtSignal(tuple) # (time, E, J, P, T)
+    newDataSig = pyqtSignal(tuple) # (time, E, J, P, T)
 
-    connecting = pyqtSignal()
-    connected = pyqtSignal()
+    connectingSig = pyqtSignal()
+    connectedSig = pyqtSignal()
 
-    disconnecting = pyqtSignal()
-    disconnected = pyqtSignal()
+    disconnectingSig = pyqtSignal()
+    disconnectedSig = pyqtSignal()
 
-    settingParams = pyqtSignal()
-    setParamsDone = pyqtSignal()
+    settingParamsSig = pyqtSignal()
+    setParamsDoneSig = pyqtSignal()
 
-    starting = pyqtSignal()
-    started = pyqtSignal()
+    startingSig = pyqtSignal()
+    startedSig = pyqtSignal()
 
-    stopping = pyqtSignal()
-    stopped = pyqtSignal()
+    stoppingSig = pyqtSignal()
+    stoppedSig = pyqtSignal()

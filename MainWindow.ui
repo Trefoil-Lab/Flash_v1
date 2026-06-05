@@ -57,9 +57,9 @@
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="endButton">
+        <widget class="QPushButton" name="stopButton">
          <property name="text">
-          <string>End</string>
+          <string>Stop</string>
          </property>
         </widget>
        </item>
