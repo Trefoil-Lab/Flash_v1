@@ -4,6 +4,7 @@ import sched
 import random
 import math
 from threading import Thread, Lock, Event
+from dataclasses import fields
 
 from interface import DCSupply
 from util import Params, ControlSignals, SampleSignals, GuiSignals
@@ -24,8 +25,8 @@ class ControlRunner(QRunnable):
         # set up sampling thread
         self.sample_stop_event = Event()
         self.sample_signal = SampleSignals()
-        self.sample_thread = SampleRunner(self.supply, self.supply_lock, self.sample_signal, 0.1, self.sample_stop_event)
-        # TODO get rate from GUI for sampling
+        self.sample_thread = SampleRunner(self.supply, self.supply_lock, self.sample_signal,
+                                          self.params.sample_interval, self.sample_stop_event)
 
         # set up listeners for events from GUI
         gui.signals.connectSig.connect(self.connect)
@@ -42,6 +43,10 @@ class ControlRunner(QRunnable):
         print('Control thread starting.')
         self.exec() # run event loop
 
+    ######################
+    # GUI event handlers #
+    ######################
+
     def connect(self):
         self.signals.connectingSig.emit()
         with self.supply_lock:
@@ -53,6 +58,25 @@ class ControlRunner(QRunnable):
         with self.supply_lock:
             self.supply.disconnect()
         self.signals.disconnectedSig.emit()
+
+    def setParams(self, new_params : Params):
+        # TODO what if we aren't connected?
+        if new_params == self.params: # only update if we need to
+            return
+        
+        # do we need to update voltage?
+        if new_params.e_field != self.params.e_field or new_params.height != self.params.height:
+            with self.supply_lock:
+                # TODO check scale factor (cm)
+                self.supply.setV(new_params.e_field * new_params.height)
+        
+        # do we need to update current?
+        if new_params.curr_density != self.params.curr_density or new_params.diameter != self.params.diameter:
+            area = 0.25 * math.pi * new_params.diameter * new_params.diameter
+            with self.supply_lock:
+                self.supply.setI(new_params.curr_density * area)
+        
+        self.params = new_params
 
     def start(self):
         self.signals.startingSig.emit()
@@ -69,6 +93,10 @@ class ControlRunner(QRunnable):
         self.sample_thread.join() # wait for sample thread to stop
         self.signals.stoppedSig.emit()
     
+    ##########################
+    # sample signal handlers #
+    ##########################
+
     def receiveData(self, inc_data : tuple[float]):
         area = 0.25 * math.pi * self.params.diameter * self.params.diameter
         # (time, V, I, P, T) -> (time, E, J, P, T)
