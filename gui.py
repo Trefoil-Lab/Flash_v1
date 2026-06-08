@@ -14,7 +14,7 @@ import pyqtgraph as pg
 import numpy as np
 import interface
 from MainWindow import Ui_MainWindow
-from util import GuiSignals
+from util import GuiSignals, ControlSignals, Params
 from control import ControlRunner
 
 DC_SOURCE_ADDR = "USB0::0x3121::0x1004::615E25116::INSTR"
@@ -49,7 +49,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         # set up control thread
         self.signals = GuiSignals()
         self.threadpool = QThreadPool()
-        self.control_thread = ControlRunner(DC_SOURCE_ADDR, self, None)
+        self.control_thread = ControlRunner(DC_SOURCE_ADDR, self.signals, 
+                                            Params(
+                                                e_field=self.eFieldDoubleSpinBox.value(),
+                                                curr_density=self.currentDensityDoubleSpinBox.value(),
+                                                temperature=None, # TODO
+                                                diameter=self.diameterCmDoubleSpinBox.value(),
+                                                height=self.heightCmDoubleSpinBox.value(),
+                                                sample_interval=self.sampleRateDoubleSpinBox.value()
+                                            ))
         
         # set up control signal listeners
         self.control_thread.signals.newDataSig.connect(self.receiveData)
@@ -65,7 +73,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.control_thread.signals.stoppedSig.connect(self.stopped)
 
         # start control thread
-        self.threadpool.start(self.control_thread)
+        #self.threadpool.start(self.control_thread)
 
         # connect buttons
         self.applyButton.clicked.connect(self.applyPress)
@@ -97,16 +105,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # plot test data
 
-        time = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        J = np.random.rand(len(time))
-        P = np.random.rand(len(time))
-        T = np.random.rand(len(time))
-        E = np.random.rand(len(time))
+        self.time = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        self.J = list(np.random.rand(len(self.time)))
+        self.P = list(np.random.rand(len(self.time)))
+        self.T = list(np.random.rand(len(self.time)))
+        self.E = list(np.random.rand(len(self.time)))
 
-        self.graph1.plot(time, E, pen=pg.mkPen(color=E_FIELD_COLOR_STR))
-        self.graph1.plot(time, J, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR))
-        self.graph2.plot(time, P, pen=pg.mkPen(color=POWER_DENSITY_COLOR_STR))
-        self.graph2.plot(time, T, pen=pg.mkPen(color=TEMPERATURE_COLOR_STR))
+        self.graph1.plot(self.time, self.E, pen=pg.mkPen(color=E_FIELD_COLOR_STR))
+        self.graph1.plot(self.time, self.J, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR))
+        self.graph2.plot(self.time, self.P, pen=pg.mkPen(color=POWER_DENSITY_COLOR_STR))
+        self.graph2.plot(self.time, self.T, pen=pg.mkPen(color=TEMPERATURE_COLOR_STR))
 
         self.graph1.setLabel('left', 'E-field', color=E_FIELD_COLOR_STR)
         self.graph1.setLabel('right', 'Current Density', color=CURRENT_DENSITY_COLOR_STR)
@@ -122,21 +130,43 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     #########################
 
     def applyPress(self):
-        pass
+        self.applyButton.setDisabled(True) # prevent further presses
+        self.signals.setParamsSig(
+            Params(
+                e_field=self.eFieldDoubleSpinBox.value(),
+                curr_density=self.eFieldDoubleSpinBox.value(),
+                temperature=None, # TODO temperature input
+                diameter=self.diameterCmDoubleSpinBox.value(),
+                height=self.heightCmDoubleSpinBox.value(),
+                sample_interval=self.sampleRateDoubleSpinBox.value()
+            )
+        )
 
     def connectionTogglePress(self):
-        pass
+        self.connectionButton.setDisabled(True) # prevent further presses
+
+        with self.control_thread.status_lock:
+            if self.control_thread.status.connected:
+                self.signals.disconnectSig.emit()
+            else:
+                self.signals.connectSig.emit()
 
     def startPress(self):
-        pass
+        self.startButton.setDisabled(True) # prevent further presses
+
+        self.signals.startSig.emit()
 
     def stopPress(self):
-        pass
+        self.stopButton.setDisabled(True) # prevent further presses
+
+        self.signals.stopSig.emit()
 
     def loadPresetPress(self):
+        # TODO
         pass
 
     def storePresetPress(self):
+        # TODO
         pass
 
     ###########################
@@ -144,37 +174,59 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     ###########################
 
     def receiveData(self, data : tuple[float]):
-        pass
+        # (time, E, J, P, T)
+        self.time.append(data[0])
+        self.E.append(data[1])
+        self.J.append(data[2])
+        self.P.append(data[3])
+        self.T.append(data[4])
 
     def connecting(self):
-        pass
+        self.statusbar.showMessage('Connecting...')
 
     def connected(self):
-        pass
+        self.connectionButton.setDisabled(False)
+        self.startButton.setDisabled(False)
+        self.applyButton.setDisabled(False)
+        with self.control_thread.status_lock:
+            if self.control_thread.status.running:
+                self.stopButton.setDisabled(False)
+            else:
+                self.startButton.setDisabled(False)
+        self.connectionButton.setText('Disconnect')
+        self.statusbar.showMessage('Connected!', 1000)
 
     def disconnecting(self):
-        pass
+        self.statusbar.showMessage('Disconnecting...')
 
     def disconnected(self):
-        pass
+        self.connectionButton.setDisabled(False)
+        self.applyButton.setDisabled(True)
+        self.startButton.setDisabled(True)
+        self.stopButton.setDisabled(True)
+        self.connectionButton.setText('Connect')
+        self.statusbar.showMessage('Disconnected!', 1000)
 
     def settingParams(self):
-        pass
+        self.statusbar.showMessage('Applying...')
 
     def setParamsDone(self):
-        pass
+        self.applyButton.setDisabled(False)
+        self.statusbar.showMessage('Applied!', 1000)
 
     def starting(self):
-        pass
+        self.statusbar.showMessage('Starting...')
 
     def started(self):
-        pass
+        self.stopButton.setDisabled(False)
+        self.statusbar.showMessage('Started!', 1000)
 
     def stopping(self):
-        pass
+        self.statusbar.showMessage('Stopping...')
 
     def stopped(self):
-        pass
+        self.startButton.setDisabled(False)
+        self.statusbar.showMessage('Stopped!', 1000)
 
 if __name__ == "__main__":
     main()

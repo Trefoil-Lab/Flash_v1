@@ -2,6 +2,11 @@ from dataclasses import dataclass
 from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot
 
 @dataclass
+class Status:
+    connected : bool = False
+    running : bool = False
+
+@dataclass
 class Params:
     e_field: float
     curr_density: float

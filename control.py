@@ -7,17 +7,19 @@ from threading import Thread, Lock, Event
 from dataclasses import fields
 
 from interface import DCSupply
-from util import Params, ControlSignals, SampleSignals, GuiSignals
-from gui import MainWindow
+from util import Params, ControlSignals, SampleSignals, GuiSignals, Status
 
 
 class ControlRunner(QRunnable):
-    def __init__(self, addr : str, gui : MainWindow, params : Params):
-        super().__init__(self)
+    def __init__(self, addr : str, gui_signals : GuiSignals, params : Params):
+        super().__init__()
         self.signals = ControlSignals()
 
         self.addr = addr
         self.params = params
+
+        self.status = Status(False, False) # for gui synchronization
+        self.status_lock = Lock()
 
         self.supply_lock = Lock()
         self.supply = DCSupply(self.addr)
@@ -29,16 +31,16 @@ class ControlRunner(QRunnable):
                                           self.params.sample_interval, self.sample_stop_event)
 
         # set up listeners for events from GUI
-        gui.signals.connectSig.connect(self.connect)
-        gui.signals.disconnectSig.connect(self.disconnect)
-        gui.signals.setParamsSig.connect(self.disconnect)
-        gui.signals.startSig.connect(self.connect)
-        gui.signals.stopSig.connect(self.connect)
+        gui_signals.connectSig.connect(self.connect)
+        gui_signals.disconnectSig.connect(self.disconnect)
+        gui_signals.setParamsSig.connect(self.disconnect)
+        gui_signals.startSig.connect(self.connect)
+        gui_signals.stopSig.connect(self.connect)
         
         # set up listener for newData event from sample collector
         self.sample_thread.sample_signal.newDataSig.connect(self.receiveData)
 
-    @pyqtSlot
+    #@pyqtSlot
     def run(self):
         print('Control thread starting.')
         self.exec() # run event loop
@@ -51,12 +53,16 @@ class ControlRunner(QRunnable):
         self.signals.connectingSig.emit()
         with self.supply_lock:
             self.supply.connect()
+        with self.status_lock:
+            self.status.connected = True
         self.signals.connectedSig.emit()
 
     def disconnect(self):
         self.signals.disconnectingSig.emit()
         with self.supply_lock:
             self.supply.disconnect()
+        with self.status_lock:
+            self.status.connected = False
         self.signals.disconnectedSig.emit()
 
     def setParams(self, new_params : Params):
@@ -87,6 +93,8 @@ class ControlRunner(QRunnable):
         with self.supply_lock:
             self.supply.enable()
         self.sample_thread.start() # start sample thread
+        with self.status_lock:
+            self.status.running = True
         self.signals.startedSig.emit()
 
     def stop(self):
@@ -97,6 +105,9 @@ class ControlRunner(QRunnable):
             self.supply.disable()
         
         self.sample_thread.join() # wait for sample thread to stop
+
+        with self.status_lock:
+            self.status.running = False
         self.signals.stoppedSig.emit()
     
     ##########################
@@ -119,7 +130,7 @@ class ControlRunner(QRunnable):
 
 class SampleRunner(Thread):
     def __init__(self, supply : DCSupply, supply_lock : Lock, sample_signal : SampleSignals, interval : float, stop_event : Event):
-        super().__init__(self)
+        super().__init__()
 
         self.interval = interval
         self.supply = supply
