@@ -3,6 +3,7 @@ from PyQt6.QtCore import QSize, Qt, QThreadPool
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
+    QFileDialog
     QPushButton,
     QLabel,
     QVBoxLayout,
@@ -73,7 +74,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.control_thread.signals.stoppedSig.connect(self.stopped)
 
         # start control thread
-        #self.threadpool.start(self.control_thread)
+        self.threadpool.start(self.control_thread)
 
         # connect buttons
         self.applyButton.clicked.connect(self.applyPress)
