@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, QRunnable, pyqtSignal, pyqtSlot
+from PyQt6.QtCore import QObject, QRunnable, QEventLoop, pyqtSignal, pyqtSlot
 import time
 import sched
 import random
@@ -31,11 +31,12 @@ class ControlRunner(QRunnable):
                                           self.params.sample_interval, self.sample_stop_event)
 
         # set up listeners for events from GUI
+        gui_signals.exitSig.connect(self.exit)
         gui_signals.connectSig.connect(self.connect)
         gui_signals.disconnectSig.connect(self.disconnect)
-        gui_signals.setParamsSig.connect(self.disconnect)
-        gui_signals.startSig.connect(self.connect)
-        gui_signals.stopSig.connect(self.connect)
+        gui_signals.setParamsSig.connect(self.setParams)
+        gui_signals.startSig.connect(self.start)
+        gui_signals.stopSig.connect(self.stop)
         
         # set up listener for newData event from sample collector
         self.sample_thread.sample_signal.newDataSig.connect(self.receiveData)
@@ -43,16 +44,26 @@ class ControlRunner(QRunnable):
     #@pyqtSlot
     def run(self):
         print('Control thread starting.')
-        self.exec() # run event loop
+        self.eventloop = QEventLoop()
+        self.eventloop.exec() # run event loop
 
     ######################
     # GUI event handlers #
     ######################
 
+    def exit(self):
+        self.eventloop.exit()
+
     def connect(self):
         self.signals.connectingSig.emit()
         with self.supply_lock:
             self.supply.connect()
+
+            # sync parameters with actual state
+            # TODO double check scale factor
+            # area = 0.25 * math.pi * self.params.diameter * self.params.diameter
+            # self.params.curr_density = self.supply.getI() / area
+            # self.params.e_field = self.supply.getV() / self.params.height
         with self.status_lock:
             self.status.connected = True
         self.signals.connectedSig.emit()
@@ -61,13 +72,15 @@ class ControlRunner(QRunnable):
         self.signals.disconnectingSig.emit()
         with self.supply_lock:
             self.supply.disconnect()
-        with self.status_lock:
-            self.status.connected = False
+        self.status.connected = False
         self.signals.disconnectedSig.emit()
 
     def setParams(self, new_params : Params):
+        self.signals.settingParamsSig.emit()
+
         # TODO what if we aren't connected?
         if new_params == self.params: # only update if we need to
+            self.signals.setParamsDoneSig.emit()
             return
         
         # do we need to update voltage?
@@ -87,6 +100,7 @@ class ControlRunner(QRunnable):
             self.sample_thread.interval = new_params.sample_interval
         
         self.params = new_params
+        self.signals.setParamsDoneSig.emit()
 
     def start(self):
         self.signals.startingSig.emit()
@@ -99,15 +113,17 @@ class ControlRunner(QRunnable):
 
     def stop(self):
         self.signals.stoppingSig.emit()
-        self.sample_stop_event.set() # tell sampling to stop
-
-        with self.supply_lock:
-            self.supply.disable()
         
-        self.sample_thread.join() # wait for sample thread to stop
+        if self.status.running:
+            self.sample_stop_event.set() # tell sampling to stop
 
-        with self.status_lock:
-            self.status.running = False
+            with self.supply_lock:
+                self.supply.disable()
+            
+            self.sample_thread.join() # wait for sample thread to stop
+
+            with self.status_lock:
+                self.status.running = False
         self.signals.stoppedSig.emit()
     
     ##########################

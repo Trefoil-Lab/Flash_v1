@@ -21,6 +21,7 @@ class GuiSignals(QObject):
     setParamsSig = pyqtSignal(Params)
     startSig = pyqtSignal()
     stopSig = pyqtSignal()
+    exitSig = pyqtSignal()
 
 class SampleSignals(QObject):
     newDataSig = pyqtSignal(tuple) # (time, V, I, P, T)

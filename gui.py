@@ -3,7 +3,7 @@ from PyQt6.QtCore import QSize, Qt, QThreadPool
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
-    QFileDialog
+    QFileDialog,
     QPushButton,
     QLabel,
     QVBoxLayout,
@@ -35,6 +35,8 @@ def main():
     window.show()
 
     app.exec()
+
+    # TODO kill control thread with main window
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self, *args, obj=None, **kwargs):
@@ -106,11 +108,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # plot test data
 
-        self.time = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
-        self.J = list(np.random.rand(len(self.time)))
-        self.P = list(np.random.rand(len(self.time)))
-        self.T = list(np.random.rand(len(self.time)))
-        self.E = list(np.random.rand(len(self.time)))
+        self.time = []
+        self.J = []
+        self.P = []
+        self.T = []
+        self.E = []
 
         self.graph1.plot(self.time, self.E, pen=pg.mkPen(color=E_FIELD_COLOR_STR))
         self.graph1.plot(self.time, self.J, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR))
@@ -126,16 +128,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.graph1.setBackground(background=None)
         self.graph2.setBackground(background=None)
 
+        # TODO visual indication that parameters have not been applied
+
     #########################
     # button press handlers #
     #########################
 
+    def closeEvent(self, event):
+        print('Stopping.')
+        self.signals.stopSig.emit()
+        print('Disconnecting.')
+        self.signals.disconnectSig.disconnect()
+        print('Stopping control thread.')
+        self.signals.exitSig.emit()
+        # TODO save data just in case
+        print('Exiting...')
+        event.accept()
+
     def applyPress(self):
+        # TODO verify height and diameter are nonzero
         self.applyButton.setDisabled(True) # prevent further presses
-        self.signals.setParamsSig(
+        self.signals.setParamsSig.emit(
             Params(
                 e_field=self.eFieldDoubleSpinBox.value(),
-                curr_density=self.eFieldDoubleSpinBox.value(),
+                curr_density=self.currentDensityDoubleSpinBox.value(),
                 temperature=None, # TODO temperature input
                 diameter=self.diameterCmDoubleSpinBox.value(),
                 height=self.heightCmDoubleSpinBox.value(),
@@ -146,11 +162,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def connectionTogglePress(self):
         self.connectionButton.setDisabled(True) # prevent further presses
 
-        with self.control_thread.status_lock:
-            if self.control_thread.status.connected:
-                self.signals.disconnectSig.emit()
-            else:
-                self.signals.connectSig.emit()
+        if self.control_thread.status.connected:
+            self.signals.disconnectSig.emit()
+        else:
+            self.signals.connectSig.emit()
 
     def startPress(self):
         self.startButton.setDisabled(True) # prevent further presses
@@ -181,6 +196,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.J.append(data[2])
         self.P.append(data[3])
         self.T.append(data[4])
+        print(f'time={data[0]}\tE={data[1]}\tJ={data[2]}\tP={data[3]}\tT={data[4]}')
 
     def connecting(self):
         self.statusbar.showMessage('Connecting...')

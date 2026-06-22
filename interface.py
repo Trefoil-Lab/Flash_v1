@@ -8,9 +8,11 @@ rm = pyvisa.ResourceManager()
 class DCSupply:
     def __init__(self : DCSupply, addr : str):
         self.addr = addr
+        self.connected = False
 
     def connect(self):
-        self.res : pyvisa.resources.Resource = rm.open_resource(self.addr)
+        if not self.connected:
+            self.res : pyvisa.resources.Resource = rm.open_resource(self.addr)
 
         # make sure this device is what we think it is
         print(self.res.query('*IDN?'))
@@ -23,9 +25,13 @@ class DCSupply:
         self.setV(0)
         # TODO reset other parameters
 
+        self.connected = True
+
     def disconnect(self):
-        self.disable()
-        self.res.close()
+        if self.connected:
+            self.disable()
+            self.res.close()
+            self.connected = False
 
     def setV(self, v : float) -> None:
         self.res.write(f'volt {v}')
@@ -62,6 +68,7 @@ def cli():
         print('commands:')
         print('\tQ\t\texit')
         print('\tH\t\tprint this message')
+        print('\tC\t\ttoggle device connection (initially connected)')
         print('\tV <volt>\tset voltage to <volt>')
         print('\tV?\t\tget voltage setting')
         print('\tI <curr>\tset current to <curr>')
@@ -72,15 +79,27 @@ def cli():
 
     # create DC source object
     source : DCSupply = DCSupply(DC_SOURCE_ADDR)
+    # source.connect()
 
     # print directions
     help()
 
     cmd : str = input(PROMPT_STR).lower()
     while cmd != 'q':
+        if not source.connected and cmd != 'c':
+            print('Not currently connected.')
+            cmd = input(PROMPT_STR)
+            continue
         match cmd[0]:
             case 'h': #help
                 help()
+            case 'c': # toggle connection
+                if source.connected:
+                    source.disconnect()
+                    print('Disconnected.')
+                else:
+                    source.connect()
+                    print('Connected.')
             case 'e': # enable
                 source.enable()
             case 'd': # disable
