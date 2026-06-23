@@ -8,21 +8,32 @@ from dataclasses import fields
 
 from interface import DCSupply
 from util import Params, ControlSignals, SampleSignals, GuiSignals, Status
+from eurotherm2400 import Eurotherm2400
 
 
 class ControlRunner(QRunnable):
-    def __init__(self, addr : str, gui_signals : GuiSignals, params : Params):
+    def __init__(
+        self,
+        supply_addr : str,
+        eurotherm_port : str,
+        eurotherm_addr : int,
+        gui_signals : GuiSignals,
+        params : Params
+    ):
         super().__init__()
         self.signals = ControlSignals()
 
-        self.addr = addr
+        self.addr = supply_addr
         self.params = params
 
         self.status = Status(False, False) # for gui synchronization
         self.status_lock = Lock()
 
-        self.supply_lock = Lock()
         self.supply = DCSupply(self.addr)
+        self.supply_lock = Lock()
+
+        self.eurotherm = Eurotherm2400(eurotherm_port, eurotherm_addr)
+        self.eurotherm_lock = Lock()
 
         # set up sampling thread
         self.sample_stop_event = Event()
@@ -95,6 +106,11 @@ class ControlRunner(QRunnable):
             with self.supply_lock:
                 self.supply.setI(new_params.curr_density * area)
 
+        # do we need to update temperature?
+        if new_params.temperature != self.params.temperature:
+            with self.eurotherm_lock:
+                self.eurotherm.target_setpoint = new_params.temperature
+
         # do we need to update sample interval?
         if new_params.sample_interval != self.params.sample_interval:
             self.sample_thread.interval = new_params.sample_interval
@@ -106,7 +122,10 @@ class ControlRunner(QRunnable):
         self.signals.startingSig.emit()
         with self.supply_lock:
             self.supply.enable()
+
+        self.sample_stop_event.clear()
         self.sample_thread.start() # start sample thread
+        
         with self.status_lock:
             self.status.running = True
         self.signals.startedSig.emit()
@@ -145,12 +164,22 @@ class ControlRunner(QRunnable):
         self.signals.newDataSig.emit(out_data)
 
 class SampleRunner(Thread):
-    def __init__(self, supply : DCSupply, supply_lock : Lock, sample_signal : SampleSignals, interval : float, stop_event : Event):
+    def __init__(self,
+        supply : DCSupply,
+        supply_lock : Lock,
+        eurotherm : Eurotherm2400,
+        eurotherm_lock : Lock,
+        sample_signal : SampleSignals,
+        interval : float,
+        stop_event : Event
+    ):
         super().__init__()
 
         self.interval = interval
         self.supply = supply
         self.supply_lock = supply_lock
+        self.eurotherm = eurotherm
+        self.eurotherm_lock = eurotherm_lock
         self.sample_signal = sample_signal
         self.stop_event = stop_event
 
@@ -163,7 +192,13 @@ class SampleRunner(Thread):
 
         def sample(sc : sched.scheduler, target_time : float):
             with self.supply_lock:
-                data = (0, self.supply.measV(), self.supply.measI(), self.supply.measP(), random.random())
+                with self.eurotherm_lock:
+                    data = (0, # time
+                            self.supply.measV(), # voltage 
+                            self.supply.measI(), # current
+                            self.supply.measP(), # power
+                            self.eurotherm.process_value # temperature
+                        )
             data[0] = time.perf_counter - start_time
             self.sample_signal.newDataSig.emit(data)
 

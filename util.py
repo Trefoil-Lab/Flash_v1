@@ -10,7 +10,7 @@ class Status:
 class Params:
     e_field: float
     curr_density: float
-    temperature: float | None
+    temperature: float
     diameter: float
     height: float
     sample_interval: float

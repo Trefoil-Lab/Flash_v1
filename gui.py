@@ -20,6 +20,9 @@ from control import ControlRunner
 
 DC_SOURCE_ADDR = "USB0::0x3121::0x1004::615E25116::INSTR"
 
+EUROTHERM_PORT = 'COM1' # TODO
+EUROTHERM_ADDR = 1 # TODO
+
 WINDOW_TITLE = 'flash-v1'
 
 E_FIELD_COLOR_STR = '#00FFFF'
@@ -35,8 +38,6 @@ def main():
     window.show()
 
     app.exec()
-
-    # TODO kill control thread with main window
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self, *args, obj=None, **kwargs):
