@@ -130,6 +130,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.graph2.setBackground(background=None)
 
         # TODO visual indication that parameters have not been applied
+        # TODO indicate voltage and current on status bar
 
     #########################
     # button press handlers #
@@ -197,6 +198,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.J.append(data[2])
         self.P.append(data[3])
         self.T.append(data[4])
+
+        self.graph1.clear()
+        self.graph2.clear()
+        self.graph1.plot(self.time, self.E, pen=pg.mkPen(color=E_FIELD_COLOR_STR))
+        self.graph1.plot(self.time, self.J, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR))
+        self.graph2.plot(self.time, self.P, pen=pg.mkPen(color=POWER_DENSITY_COLOR_STR))
+        self.graph2.plot(self.time, self.T, pen=pg.mkPen(color=TEMPERATURE_COLOR_STR))
         print(f'time={data[0]}\tE={data[1]}\tJ={data[2]}\tP={data[3]}\tT={data[4]}')
 
     def connecting(self):
