@@ -9,19 +9,18 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QGroupBox,
+    QSpacerItem,
+    QSizePolicy
 )
 from PyQt6 import QtGui
 import pyqtgraph as pg
 import numpy as np
 import interface
 from MainWindow import Ui_MainWindow
-from util import GuiSignals, ControlSignals, Params
+from util import GuiSignals, ControlSignals, Params, RampData
 from control import ControlRunner
 
 DC_SOURCE_ADDR = "USB0::0x3121::0x1004::615E25116::INSTR"
-
-EUROTHERM_PORT = 'COM1' # TODO
-EUROTHERM_ADDR = 1 # TODO
 
 WINDOW_TITLE = 'flash-v1'
 
@@ -55,9 +54,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.threadpool = QThreadPool()
         self.control_thread = ControlRunner(DC_SOURCE_ADDR, self.signals, 
                                             Params(
+                                                ramp_data=RampData(
+                                                    ramp=self.currentDensityModeComboBox.currentText == 'Ramp',
+                                                    start=self.currentDensityStartDoubleSpinBox.value(),
+                                                    end=self.currentDensityEndDoubleSpinBox.value(),
+                                                    rate=self.currentDensityRateDoubleSpinBox.value()
+                                                ),
                                                 e_field=self.eFieldDoubleSpinBox.value(),
-                                                curr_density=self.currentDensityDoubleSpinBox.value(),
-                                                temperature=None, # TODO
+                                                curr_density=self.currentDensityStartDoubleSpinBox.value(),
                                                 diameter=self.diameterCmDoubleSpinBox.value(),
                                                 height=self.heightCmDoubleSpinBox.value(),
                                                 sample_interval=self.sampleRateDoubleSpinBox.value()
@@ -75,17 +79,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.control_thread.signals.startedSig.connect(self.started)
         self.control_thread.signals.stoppingSig.connect(self.stopping)
         self.control_thread.signals.stoppedSig.connect(self.stopped)
+        self.control_thread.signals.rampingSig.connect(self.ramping)
+        self.control_thread.signals.rampingDoneSig.connect(self.rampingDone)
 
         # start control thread
         self.threadpool.start(self.control_thread)
 
         # connect buttons
+        self.currentDensityModeComboBox.currentIndexChanged.connect(self.currDensityModeSelect)
         self.applyButton.clicked.connect(self.applyPress)
         self.connectionButton.clicked.connect(self.connectionTogglePress)
         self.startButton.clicked.connect(self.startPress)
         self.stopButton.clicked.connect(self.stopPress)
         self.loadPresetButton.clicked.connect(self.loadPresetPress)
         self.storePresetButton.clicked.connect(self.storePresetPress)
+
+        # set up status bar V and I read out
+        self.readoutV = QLabel()
+        self.statusbar.addPermanentWidget(self.readoutV)
+        self.readoutV.hide()
+        self.readoutI = QLabel()
+        self.statusbar.addPermanentWidget(self.readoutI)
+        self.readoutI.hide()
 
         # set parameter label colors
         self.eFieldLabel.setStyleSheet(f'QLabel {{color: {E_FIELD_COLOR_STR}}}')
@@ -136,6 +151,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     # button press handlers #
     #########################
 
+    def currDensityModeSelect(self):
+        if self.currentDensityModeComboBox.currentText() == 'Hold':
+            self.currentDensityEndDoubleSpinBox.setDisabled(True)
+            self.currentDensityEndLabel.setDisabled(True)
+            self.currentDensityRateDoubleSpinBox.setDisabled(True)
+            self.currentDensityRateLabel.setDisabled(True)
+        else:
+            self.currentDensityEndDoubleSpinBox.setDisabled(False)
+            self.currentDensityEndLabel.setDisabled(False)
+            self.currentDensityRateDoubleSpinBox.setDisabled(False)
+            self.currentDensityRateLabel.setDisabled(False)
+
     def closeEvent(self, event):
         print('Stopping.')
         self.signals.stopSig.emit()
@@ -152,9 +179,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.applyButton.setDisabled(True) # prevent further presses
         self.signals.setParamsSig.emit(
             Params(
+                ramp_data=RampData(
+                    ramp=self.currentDensityModeComboBox.currentText() == 'Ramp',
+                    start=self.currentDensityStartDoubleSpinBox.value(),
+                    end=self.currentDensityEndDoubleSpinBox.value(),
+                    rate=self.currentDensityRateDoubleSpinBox.value()
+                ),
                 e_field=self.eFieldDoubleSpinBox.value(),
-                curr_density=self.currentDensityDoubleSpinBox.value(),
-                temperature=None, # TODO temperature input
+                curr_density=self.currentDensityStartDoubleSpinBox.value(),
                 diameter=self.diameterCmDoubleSpinBox.value(),
                 height=self.heightCmDoubleSpinBox.value(),
                 sample_interval=self.sampleRateDoubleSpinBox.value()
@@ -192,7 +224,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     ###########################
 
     def receiveData(self, data : tuple[float]):
-        # (time, E, J, P, T)
+        # (time, E, J, P, T, V, I)
         self.time.append(data[0])
         self.E.append(data[1])
         self.J.append(data[2])
@@ -205,7 +237,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.graph1.plot(self.time, self.J, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR))
         self.graph2.plot(self.time, self.P, pen=pg.mkPen(color=POWER_DENSITY_COLOR_STR))
         self.graph2.plot(self.time, self.T, pen=pg.mkPen(color=TEMPERATURE_COLOR_STR))
-        print(f'time={data[0]}\tE={data[1]}\tJ={data[2]}\tP={data[3]}\tT={data[4]}')
+        
+        self.readoutV.setText(f'V={data[5]}')
+        self.readoutI.setText(f'I={data[6]}')
 
     def connecting(self):
         self.statusbar.showMessage('Connecting...')
@@ -243,8 +277,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def starting(self):
         self.statusbar.showMessage('Starting...')
 
+    def ramping(self):
+        self.applyButton.setDisabled(True)
+
+    def rampingDone(self):
+        self.applyButton.setDisabled(False)
+        self.statusbar.showMessage('Ramping done!', 1000)
+
     def started(self):
         self.stopButton.setDisabled(False)
+        self.readoutI.show()
+        self.readoutV.show()
         self.statusbar.showMessage('Started!', 1000)
 
     def stopping(self):
@@ -252,6 +295,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def stopped(self):
         self.startButton.setDisabled(False)
+        self.applyButton.setDisabled(False)
+        self.readoutI.hide()
+        self.readoutV.hide()
         self.statusbar.showMessage('Stopped!', 1000)
 
 if __name__ == "__main__":

@@ -7,10 +7,17 @@ class Status:
     running : bool = False
 
 @dataclass
+class RampData:
+    ramp: bool
+    start: float
+    end: float
+    rate: float
+
+@dataclass
 class Params:
+    ramp_data: RampData | None
     e_field: float
     curr_density: float
-    temperature: float | None
     diameter: float
     height: float
     sample_interval: float
@@ -35,6 +42,10 @@ class ControlSignals(QObject):
     disconnectingSig = pyqtSignal()
     disconnectedSig = pyqtSignal()
 
+    rampingSig = pyqtSignal()
+    rampingDoneSig = pyqtSignal()
+
+    setParamsDirectSig = pyqtSignal(Params)
     settingParamsSig = pyqtSignal()
     setParamsDoneSig = pyqtSignal()
 

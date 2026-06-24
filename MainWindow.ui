@@ -131,7 +131,7 @@
          <item row="0" column="0">
           <widget class="QLabel" name="eFieldLabel">
            <property name="text">
-            <string>E-field</string>
+            <string>E-field (V/cm)</string>
            </property>
           </widget>
          </item>
@@ -150,21 +150,72 @@
           </widget>
          </item>
          <item row="1" column="1">
-          <widget class="QDoubleSpinBox" name="currentDensityDoubleSpinBox">
+          <widget class="QComboBox" name="currentDensityModeComboBox">
+           <property name="currentIndex">
+            <number>1</number>
+           </property>
+           <item>
+            <property name="text">
+             <string>Hold</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>Ramp</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item row="2" column="0">
+          <widget class="QLabel" name="currentDensityStartLabel">
+           <property name="text">
+            <string>Start (A/cm²)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="2" column="1">
+          <widget class="QDoubleSpinBox" name="currentDensityStartDoubleSpinBox">
+           <property name="singleStep">
+            <double>0.500000000000000</double>
+           </property>
            <property name="value">
             <double>1.000000000000000</double>
            </property>
           </widget>
          </item>
-         <item row="2" column="0">
-          <widget class="QLabel" name="holdTimeLabel">
+         <item row="3" column="0">
+          <widget class="QLabel" name="currentDensityEndLabel">
            <property name="text">
-            <string>Hold Time</string>
+            <string>End (A/cm²)</string>
            </property>
           </widget>
          </item>
-         <item row="2" column="1">
-          <widget class="QDoubleSpinBox" name="holdTimeDoubleSpinBox"/>
+         <item row="3" column="1">
+          <widget class="QDoubleSpinBox" name="currentDensityEndDoubleSpinBox">
+           <property name="singleStep">
+            <double>0.500000000000000</double>
+           </property>
+           <property name="value">
+            <double>2.000000000000000</double>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="0">
+          <widget class="QLabel" name="currentDensityRateLabel">
+           <property name="text">
+            <string>Rate (A/cm²/s)</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="1">
+          <widget class="QDoubleSpinBox" name="currentDensityRateDoubleSpinBox">
+           <property name="singleStep">
+            <double>0.050000000000000</double>
+           </property>
+           <property name="value">
+            <double>0.050000000000000</double>
+           </property>
+          </widget>
          </item>
         </layout>
        </widget>

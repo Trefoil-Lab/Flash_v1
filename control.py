@@ -9,8 +9,8 @@ from dataclasses import fields
 
 from interface import DCSupply
 from util import Params, ControlSignals, SampleSignals, GuiSignals, Status
-from eurotherm2400 import Eurotherm2400
 
+RAMP_INTERVAL_S = 0.200
 
 class ControlRunner(QRunnable):
     def __init__(
@@ -23,6 +23,7 @@ class ControlRunner(QRunnable):
     ):
         super().__init__()
         self.signals = ControlSignals()
+        self.gui_signals = gui_signals
 
         self.addr = supply_addr
         self.params = params
@@ -37,19 +38,22 @@ class ControlRunner(QRunnable):
         # self.eurotherm_lock = Lock()
 
         # set up sampling thread
-        self.sample_stop_event = Event()
+        self.stop_event = Event()
         self.sample_signal = SampleSignals()
 
         # set up listeners for events from GUI
-        gui_signals.exitSig.connect(self.exit)
-        gui_signals.connectSig.connect(self.connect)
-        gui_signals.disconnectSig.connect(self.disconnect)
-        gui_signals.setParamsSig.connect(self.setParams)
-        gui_signals.startSig.connect(self.start)
-        gui_signals.stopSig.connect(self.stop)
+        self.gui_signals.exitSig.connect(self.exit)
+        self.gui_signals.connectSig.connect(self.connect)
+        self.gui_signals.disconnectSig.connect(self.disconnect)
+        self.gui_signals.setParamsSig.connect(self.setParams)
+        self.gui_signals.startSig.connect(self.start)
+        self.gui_signals.stopSig.connect(self.stop)
         
         # set up listener for newData event from sample collector
         self.sample_signal.newDataSig.connect(self.receiveData)
+
+        # set up listener for direct set params
+        self.signals.setParamsDirectSig.connect(self.setParamsDirect)
 
     #@pyqtSlot
     def run(self):
@@ -70,10 +74,6 @@ class ControlRunner(QRunnable):
             self.supply.connect()
             time.sleep(1)
 
-            # sync parameters with actual state
-            # area = 0.25 * math.pi * self.params.diameter * self.params.diameter
-            # self.params.curr_density = self.supply.getI() / area
-            # self.params.e_field = self.supply.getV() / self.params.height
         with self.status_lock:
             self.status.connected = True
         self.signals.connectedSig.emit()
@@ -85,6 +85,24 @@ class ControlRunner(QRunnable):
         self.status.connected = False
         self.signals.disconnectedSig.emit()
 
+    def setParamsDirect(self, new_params : Params):
+        # ignores any ramp information
+
+        print(new_params)
+
+        with self.supply_lock:
+            area = 0.25 * math.pi * new_params.diameter * new_params.diameter
+            self.supply.setV(new_params.e_field * new_params.height)
+            self.supply.setI(new_params.curr_density * area)
+
+        # do we need to update sample interval?
+        if new_params.sample_interval != self.params.sample_interval:
+            self.sample_thread.interval = new_params.sample_interval
+        
+        ramp_data = self.params.ramp_data
+        self.params = new_params
+        self.params.ramp_data = ramp_data # preserve ramp data
+
     def setParams(self, new_params : Params):
         self.signals.settingParamsSig.emit()
 
@@ -92,38 +110,47 @@ class ControlRunner(QRunnable):
             self.signals.setParamsDoneSig.emit()
             return
         
-        # do we need to update voltage?
-        if new_params.e_field != self.params.e_field or new_params.height != self.params.height:
-            with self.supply_lock:
-                self.supply.setV(new_params.e_field * new_params.height)
-        
-        # do we need to update current?
-        if new_params.curr_density != self.params.curr_density or new_params.diameter != self.params.diameter:
-            area = 0.25 * math.pi * new_params.diameter * new_params.diameter
-            with self.supply_lock:
-                self.supply.setI(new_params.curr_density * area)
+        self.params.ramp_data = new_params.ramp_data
 
-        # do we need to update temperature?
-        # if new_params.temperature != self.params.temperature:
-        #     with self.eurotherm_lock:
-        #         self.eurotherm.target_setpoint = new_params.temperature
-
-        # do we need to update sample interval?
-        if new_params.sample_interval != self.params.sample_interval:
-            self.sample_thread.interval = new_params.sample_interval
+        if self.status.running == True and new_params.ramp_data.ramp == True and new_params.ramp_data.end != self.params.curr_density:
+            # if running and ramping is enabled and target current density changes, we need to ramp
+            
+            # if we are already running...
+            # TODO: is this how we want to do it? should we even allow ramping while running?
+            #       would it make more sense to ramp from the present current setting?
+            # area = 0.25 * math.pi * new_params.diameter * new_params.diameter
+            # with self.supply_lock:
+            #     new_params.ramp_data.start = self.supply.measI() / area
+            
+            self.params.ramp_data = new_params.ramp_data
+            self.ramp()
+        else:
+            # otherwise just set the parameters directly
+            self.setParamsDirect(new_params)
         
-        self.params = new_params
         self.signals.setParamsDoneSig.emit()
+
+    def ramp(self):
+        self.signals.rampingSig.emit()
+        # assume the present current density is the same as our target start
+        self.ramping_thread = RampRunner(self.signals, self.gui_signals, self.params, self.stop_event)
+        # spawn ramping thread
+        self.ramping_thread.start()
+
 
     def start(self):
         self.signals.startingSig.emit()
         with self.supply_lock:
             self.supply.enable()
 
-        self.sample_stop_event.clear()
+        self.stop_event.clear()
         self.sample_thread = SampleRunner(self.supply, self.supply_lock, self.sample_signal,
-                                          self.params.sample_interval, self.sample_stop_event)
+                                          self.params.sample_interval, self.stop_event)
         self.sample_thread.start() # start sample thread
+
+        # if ramping is enabled, go do that
+        if self.params.ramp_data.ramp:
+            self.ramp()
 
         with self.status_lock:
             self.status.running = True
@@ -137,7 +164,7 @@ class ControlRunner(QRunnable):
                 self.supply.disable()
         
         if self.status.running:
-            self.sample_stop_event.set() # tell sampling to stop
+            self.stop_event.set() # tell sampling to stop
             self.sample_thread.join() # wait for sample thread to stop
 
             with self.status_lock:
@@ -150,24 +177,72 @@ class ControlRunner(QRunnable):
 
     def receiveData(self, inc_data : tuple[float]):
         area = 0.25 * math.pi * self.params.diameter * self.params.diameter
-        # (time, V, I, P, T) -> (time, E, J, P, T)
-        # TODO check scaling (because of cm)
+        # (time, V, I, P, T) -> (time, E, J, P, T, V, I)
         out_data = list(inc_data)
         out_data[1] = inc_data[1] / self.params.height # e-field from voltage
         out_data[2] = inc_data[2] / area # current density from current
         out_data[3] = inc_data[3] / area # power density from power
+
+        out_data.append(inc_data[1])
+        out_data.append(inc_data[2])
 
         # TODO use queue to communicate between sampler and control thread to ensure reliability
         # TODO prepare for saving data
         
         self.signals.newDataSig.emit(tuple(out_data))
 
+class RampRunner(Thread):
+    def __init__(self,
+                control_signals : ControlSignals,
+                gui_signals : GuiSignals,
+                params : Params,
+                stop_event : Event
+    ):
+        super().__init__()
+
+        self.control_signals = control_signals
+        self.gui_signals = gui_signals
+        self.params = params
+        self.stop_event = stop_event
+
+    def move(self, sc : sched.scheduler, target_time : float):
+        # check if we should stop
+        if self.stop_event.is_set():
+            sys.exit() # close thread
+
+        
+        if self.params.curr_density >= self.params.ramp_data.end:
+            # if we are at the target...
+            self.params.curr_density = self.params.ramp_data.end
+            self.control_signals.setParamsDirectSig.emit(self.params)
+            self.control_signals.rampingDoneSig.emit()
+            sys.exit() # close thread
+        
+        # adjust current density
+        self.params.curr_density += self.params.ramp_data.rate
+        self.control_signals.setParamsDirectSig.emit(self.params)
+
+        # schedule next move
+        target_time += RAMP_INTERVAL_S
+        sc.enterabs(target_time, 1, self.move, (sc, target_time))
+
+    def run(self):
+        print('Ramping thread started.')
+        sc = sched.scheduler(time.perf_counter, time.sleep)
+
+        # set start parameters
+        self.params.curr_density = self.params.ramp_data.start
+        self.control_signals.setParamsDirectSig.emit(self.params)
+        
+        # schedule moves
+        target_time = time.perf_counter() + RAMP_INTERVAL_S
+        sc.enterabs(target_time, 1, self.move, (sc, target_time))
+        sc.run()
+
 class SampleRunner(Thread):
     def __init__(self,
         supply : DCSupply,
         supply_lock : Lock,
-        # eurotherm : Eurotherm2400,
-        # eurotherm_lock : Lock,
         sample_signal : SampleSignals,
         interval : float,
         stop_event : Event
@@ -201,7 +276,7 @@ class SampleRunner(Thread):
                 ]
             data[0] = time.perf_counter() - start_time
             self.sample_signal.newDataSig.emit(tuple(data))
-            print(f'time: {data[0]}\tVoltage: {data[1]}\tCurrent: {data[2]}\tPower: {data[3]}\tTemperature: {data[4]}')
+            # print(f'time: {data[0]}\tVoltage: {data[1]}\tCurrent: {data[2]}\tPower: {data[3]}\tTemperature: {data[4]}')
 
             # check event to see if we should continue
             if not self.stop_event.is_set():
