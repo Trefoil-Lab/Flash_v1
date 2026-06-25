@@ -4,20 +4,21 @@ import sched
 import random
 import math
 import sys
+import datetime
 from threading import Thread, Lock, Event
-from dataclasses import fields
+from queue import SimpleQueue, Empty
 
 from interface import DCSupply
 from util import Params, ControlSignals, SampleSignals, GuiSignals, Status
 
 RAMP_INTERVAL_S = 0.200
+SAVE_INTERVAL_S = 10
+CSV_HEADER = 'Timestamp,Time,Voltage,Current,E,J,P,T'
 
 class ControlRunner(QRunnable):
     def __init__(
         self,
         supply_addr : str,
-        # eurotherm_port : str,
-        # eurotherm_addr : int,
         gui_signals : GuiSignals,
         params : Params
     ):
@@ -34,8 +35,7 @@ class ControlRunner(QRunnable):
         self.supply = DCSupply(self.addr)
         self.supply_lock = Lock()
 
-        # self.eurotherm = Eurotherm2400(eurotherm_port, eurotherm_addr)
-        # self.eurotherm_lock = Lock()
+        self.data_queue = SimpleQueue()
 
         # set up sampling thread
         self.stop_event = Event()
@@ -68,11 +68,14 @@ class ControlRunner(QRunnable):
     def exit(self):
         self.eventloop.exit()
 
-    def connect(self):
+    def connect(self, filepath):
         self.signals.connectingSig.emit()
         with self.supply_lock:
             self.supply.connect()
             time.sleep(1)
+
+        self.filepath = filepath
+        self.save_thread = SaveRunner(self.filepath, self.data_queue, self.stop_event)
 
         with self.status_lock:
             self.status.connected = True
@@ -88,7 +91,7 @@ class ControlRunner(QRunnable):
     def setParamsDirect(self, new_params : Params):
         # ignores any ramp information
 
-        print(new_params)
+        # print(new_params)
 
         with self.supply_lock:
             area = 0.25 * math.pi * new_params.diameter * new_params.diameter
@@ -137,7 +140,6 @@ class ControlRunner(QRunnable):
         # spawn ramping thread
         self.ramping_thread.start()
 
-
     def start(self):
         self.signals.startingSig.emit()
         with self.supply_lock:
@@ -145,12 +147,15 @@ class ControlRunner(QRunnable):
 
         self.stop_event.clear()
         self.sample_thread = SampleRunner(self.supply, self.supply_lock, self.sample_signal,
-                                          self.params.sample_interval, self.stop_event)
+                                          self.params.sample_interval, self.stop_event, self, self.data_queue)
         self.sample_thread.start() # start sample thread
 
         # if ramping is enabled, go do that
         if self.params.ramp_data.ramp:
             self.ramp()
+
+        # start saving thread
+        self.save_thread.start()
 
         with self.status_lock:
             self.status.running = True
@@ -166,6 +171,7 @@ class ControlRunner(QRunnable):
         if self.status.running:
             self.stop_event.set() # tell sampling to stop
             self.sample_thread.join() # wait for sample thread to stop
+            self.save_thread.join()
 
             with self.status_lock:
                 self.status.running = False
@@ -190,6 +196,40 @@ class ControlRunner(QRunnable):
         # TODO prepare for saving data
         
         self.signals.newDataSig.emit(tuple(out_data))
+
+class SaveRunner(Thread):
+    def __init__(self, filepath : str, data_queue : SimpleQueue, stop_event : Event):
+        super().__init__()
+
+        self.filepath = filepath
+        self.queue = data_queue
+        self.stop_event = stop_event
+
+    def save(self, sc : sched.scheduler):
+        d : tuple
+        with open(self.filepath, 'a') as f:
+            while not self.queue.empty():
+                try:
+                    d = self.queue.get_nowait()
+                except Empty:
+                    break
+                f.write(','.join( [str(x) for x in d] ) + '\n')
+        
+        if not self.stop_event.is_set():
+            sc.enter(SAVE_INTERVAL_S, 1, self.save, (sc, ))
+
+    def run(self):
+
+        with open(self.filepath, 'w') as f:
+            f.write(CSV_HEADER + '\n')
+
+        sc = sched.scheduler(time.monotonic, time.sleep)
+        sc.enter(SAVE_INTERVAL_S, 1, self.save, (sc, ))
+        
+        while not self.stop_event.is_set():
+            sc.run(False)
+            time.sleep(0.2)
+        self.save(sc)
 
 class RampRunner(Thread):
     def __init__(self,
@@ -245,17 +285,19 @@ class SampleRunner(Thread):
         supply_lock : Lock,
         sample_signal : SampleSignals,
         interval : float,
-        stop_event : Event
+        stop_event : Event,
+        control_runner : ControlRunner,
+        data_queue : SimpleQueue
     ):
         super().__init__()
 
         self.interval = interval
         self.supply = supply
         self.supply_lock = supply_lock
-        # self.eurotherm = eurotherm
-        # self.eurotherm_lock = eurotherm_lock
         self.sample_signal = sample_signal
         self.stop_event = stop_event
+        self.control_runner = control_runner
+        self.queue = data_queue
 
 
     def run(self):
@@ -267,15 +309,28 @@ class SampleRunner(Thread):
         def sample(sc : sched.scheduler, target_time : float):
             # print('sampling!')
             with self.supply_lock:
-                # with self.eurotherm_lock:
                 data = [0, # time
                         self.supply.measV(), # voltage 
                         self.supply.measI(), # current
                         self.supply.measP(), # power
-                        random.randint(0, 10) # self.eurotherm.process_value # temperature
+                        random.randint(0, 10) # temperature
                 ]
             data[0] = time.perf_counter() - start_time
             self.sample_signal.newDataSig.emit(tuple(data))
+
+            # send to queue for saving
+            area = 0.25 * math.pi * self.control_runner.params.diameter * self.control_runner.params.diameter
+            queue_data = (
+                datetime.datetime.now().timestamp(), # timestamp
+                data[0], # time
+                data[1], # voltage
+                data[2], # current
+                data[1] / self.control_runner.params.height, # E
+                data[2] / area, # J
+                data[3] / area, # P
+            )
+            self.queue.put(queue_data)
+
             # print(f'time: {data[0]}\tVoltage: {data[1]}\tCurrent: {data[2]}\tPower: {data[3]}\tTemperature: {data[4]}')
 
             # check event to see if we should continue

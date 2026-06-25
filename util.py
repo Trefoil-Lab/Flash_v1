@@ -23,7 +23,7 @@ class Params:
     sample_interval: float
 
 class GuiSignals(QObject):
-    connectSig = pyqtSignal()
+    connectSig = pyqtSignal(str)
     disconnectSig = pyqtSignal()
     setParamsSig = pyqtSignal(Params)
     startSig = pyqtSignal()

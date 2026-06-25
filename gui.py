@@ -3,26 +3,28 @@ from PyQt6.QtCore import QSize, Qt, QThreadPool
 from PyQt6.QtWidgets import (
     QApplication,
     QMainWindow,
+    QDialog,
     QFileDialog,
-    QPushButton,
     QLabel,
-    QVBoxLayout,
-    QHBoxLayout,
-    QGroupBox,
+    QPushButton,
+    QMessageBox,
     QSpacerItem,
     QSizePolicy
 )
 from PyQt6 import QtGui
 import pyqtgraph as pg
 import numpy as np
-import interface
+import os
+import datetime
 from MainWindow import Ui_MainWindow
+from ConnectDialog import Ui_Dialog
 from util import GuiSignals, ControlSignals, Params, RampData
 from control import ControlRunner
 
 DC_SOURCE_ADDR = "USB0::0x3121::0x1004::615E25116::INSTR"
 
 WINDOW_TITLE = 'flash-v1'
+CONNECTION_DIALOG_TITLE = 'connection dialog'
 
 E_FIELD_COLOR_STR = '#00FFFF'
 CURRENT_DENSITY_COLOR_STR = '#FF0000'
@@ -91,8 +93,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.connectionButton.clicked.connect(self.connectionTogglePress)
         self.startButton.clicked.connect(self.startPress)
         self.stopButton.clicked.connect(self.stopPress)
-        self.loadPresetButton.clicked.connect(self.loadPresetPress)
-        self.storePresetButton.clicked.connect(self.storePresetPress)
 
         # set up status bar V and I read out
         self.readoutV = QLabel()
@@ -145,7 +145,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.graph2.setBackground(background=None)
 
         # TODO visual indication that parameters have not been applied
-        # TODO indicate voltage and current on status bar
 
     #########################
     # button press handlers #
@@ -170,7 +169,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.signals.disconnectSig.disconnect()
         print('Stopping control thread.')
         self.signals.exitSig.emit()
-        # TODO save data just in case
         print('Exiting...')
         event.accept()
 
@@ -199,7 +197,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.control_thread.status.connected:
             self.signals.disconnectSig.emit()
         else:
-            self.signals.connectSig.emit()
+            dlg = ConnectDialog(self.signals, self.connectionButton)
+            dlg.exec()
 
     def startPress(self):
         self.startButton.setDisabled(True) # prevent further presses
@@ -210,14 +209,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.stopButton.setDisabled(True) # prevent further presses
 
         self.signals.stopSig.emit()
-
-    def loadPresetPress(self):
-        # TODO
-        pass
-
-    def storePresetPress(self):
-        # TODO
-        pass
 
     ###########################
     # control signal handlers #
@@ -299,6 +290,55 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.readoutI.hide()
         self.readoutV.hide()
         self.statusbar.showMessage('Stopped!', 1000)
+
+class ConnectDialog(Ui_Dialog, QDialog):
+    def __init__(self, gui_signals : GuiSignals, connection_button : QPushButton):
+        super().__init__()
+        self.setupUi(self)
+
+        ######################
+        # custom setup below #
+        ######################
+
+        self.gui_signals = gui_signals
+        self.connection_button = connection_button
+        self.setWindowTitle(CONNECTION_DIALOG_TITLE)
+
+        # set up event listeners
+        self.browseButton.pressed.connect(self.browse)
+    
+    def browse(self):
+        file_dialog = QFileDialog()
+        file_dialog.setFileMode(QFileDialog.FileMode.Directory)
+
+        if file_dialog.exec():
+            folder = file_dialog.selectedFiles()[0]
+            self.filePathLineEdit.setText(folder)
+
+    def accept(self):
+        folder = self.filePathLineEdit.text()
+        if not os.path.isdir(folder):
+            QMessageBox.critical(None, 'Error', 'Invalid directory.')
+            return
+        
+        # build file name
+        filename : str = datetime.datetime.now().strftime('%y-%m-%d-%H%M')
+        for input in (self.materialLineEdit, self.temperatureLineEdit, self.volumeLineEdit, self.currentLineEdit):
+            if len(input.text()) != 0:
+                filename += '_' + '-'.join(input.text().split())
+        filename += '.csv'
+        print(folder)
+        print(filename)
+        filepath = os.path.join(folder, filename)
+        print(filepath)
+
+        self.gui_signals.connectSig.emit(filepath)
+
+        return super().accept()
+    
+    def reject(self):
+        self.connection_button.setDisabled(False)
+        return super().reject()
 
 if __name__ == "__main__":
     main()
