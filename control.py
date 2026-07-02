@@ -155,6 +155,7 @@ class ControlRunner(QRunnable):
             self.ramp()
 
         # start saving thread
+        self.save_thread = SaveRunner(self.filepath, self.data_queue, self.stop_event)
         self.save_thread.start()
 
         with self.status_lock:
@@ -205,7 +206,7 @@ class SaveRunner(Thread):
         self.queue = data_queue
         self.stop_event = stop_event
 
-    def save(self, sc : sched.scheduler):
+    def save(self, sc : sched.scheduler | None):
         d : tuple
         with open(self.filepath, 'a') as f:
             while not self.queue.empty():
@@ -215,11 +216,11 @@ class SaveRunner(Thread):
                     break
                 f.write(','.join( [str(x) for x in d] ) + '\n')
         
-        if not self.stop_event.is_set():
+        if not self.stop_event.is_set() and sc != None:
             sc.enter(SAVE_INTERVAL_S, 1, self.save, (sc, ))
 
     def run(self):
-
+        print('Saving thread started')
         with open(self.filepath, 'w') as f:
             f.write(CSV_HEADER + '\n')
 
@@ -229,7 +230,8 @@ class SaveRunner(Thread):
         while not self.stop_event.is_set():
             sc.run(False)
             time.sleep(0.2)
-        self.save(sc)
+        self.save(None)
+        sys.exit()
 
 class RampRunner(Thread):
     def __init__(self,
@@ -259,7 +261,7 @@ class RampRunner(Thread):
             sys.exit() # close thread
         
         # adjust current density
-        self.params.curr_density += self.params.ramp_data.rate
+        self.params.curr_density += (self.params.ramp_data.rate * RAMP_INTERVAL_S)
         self.control_signals.setParamsDirectSig.emit(self.params)
 
         # schedule next move

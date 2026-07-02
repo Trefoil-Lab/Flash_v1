@@ -122,7 +122,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.GraphBox.replaceWidget(self.graphPlaceholder2, self.graph2)
         self.graphPlaceholder2.hide()
 
-        # plot test data
+        # set up graphs
 
         self.time = []
         self.J = []
@@ -130,16 +130,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.T = []
         self.E = []
 
-        self.graph1.plot(self.time, self.E, pen=pg.mkPen(color=E_FIELD_COLOR_STR))
-        self.graph1.plot(self.time, self.J, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR))
-        self.graph2.plot(self.time, self.P, pen=pg.mkPen(color=POWER_DENSITY_COLOR_STR))
-        self.graph2.plot(self.time, self.T, pen=pg.mkPen(color=TEMPERATURE_COLOR_STR))
+        self.rampPlotItem = None
+        self.ELinePlotItem = None
+        self.JLinePlotItem = None
+        self.EPlotItem = self.graph1.plot(self.time, self.E, pen=pg.mkPen(color=E_FIELD_COLOR_STR))
+        self.JPlotItem = self.graph1.plot(self.time, self.J, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR))
+        self.PPlotItem = self.graph2.plot(self.time, self.P, pen=pg.mkPen(color=POWER_DENSITY_COLOR_STR))
+        self.TPlotItem = self.graph2.plot(self.time, self.T, pen=pg.mkPen(color=TEMPERATURE_COLOR_STR))
 
         self.graph1.setLabel('left', 'E-field', color=E_FIELD_COLOR_STR)
         self.graph1.setLabel('right', 'Current Density', color=CURRENT_DENSITY_COLOR_STR)
+        self.graph1.setLimits(xMin=0)
 
         self.graph2.setLabel('left', 'Power Density', color=POWER_DENSITY_COLOR_STR)
         self.graph2.setLabel('right', 'Temperature', color=TEMPERATURE_COLOR_STR)
+        self.graph2.setLimits(xMin=0)
 
         self.graph1.setBackground(background=None)
         self.graph2.setBackground(background=None)
@@ -175,20 +180,50 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def applyPress(self):
         # TODO verify height and diameter are nonzero
         self.applyButton.setDisabled(True) # prevent further presses
-        self.signals.setParamsSig.emit(
-            Params(
-                ramp_data=RampData(
-                    ramp=self.currentDensityModeComboBox.currentText() == 'Ramp',
-                    start=self.currentDensityStartDoubleSpinBox.value(),
-                    end=self.currentDensityEndDoubleSpinBox.value(),
-                    rate=self.currentDensityRateDoubleSpinBox.value()
-                ),
-                e_field=self.eFieldDoubleSpinBox.value(),
-                curr_density=self.currentDensityStartDoubleSpinBox.value(),
-                diameter=self.diameterCmDoubleSpinBox.value(),
-                height=self.heightCmDoubleSpinBox.value(),
-                sample_interval=self.sampleRateDoubleSpinBox.value()
-            )
+        params = Params(
+            ramp_data=RampData(
+                ramp=self.currentDensityModeComboBox.currentText() == 'Ramp',
+                start=self.currentDensityStartDoubleSpinBox.value(),
+                end=self.currentDensityEndDoubleSpinBox.value(),
+                rate=self.currentDensityRateDoubleSpinBox.value()
+            ),
+            e_field=self.eFieldDoubleSpinBox.value(),
+            curr_density=self.currentDensityStartDoubleSpinBox.value(),
+            diameter=self.diameterCmDoubleSpinBox.value(),
+            height=self.heightCmDoubleSpinBox.value(),
+            sample_interval=self.sampleRateDoubleSpinBox.value()
+        )
+        self.signals.setParamsSig.emit(params)
+
+        # parameters preview
+        if self.rampPlotItem != None: # removing existing ramp preview if applicable
+                self.graph1.getPlotItem().removeItem(self.rampPlotItem)
+        if params.ramp_data.ramp:
+            # only show current ramp preview if ramping is enabled
+            x = []
+            y = []
+            if self.control_thread.status.running:
+                x.append(self.time[-1])
+            else:
+                x.append(0)
+            y.append(params.ramp_data.start)
+            dur = abs(params.ramp_data.start - params.ramp_data.end) / params.ramp_data.rate
+            x.append(x[0] + dur)
+            y.append(params.ramp_data.end)
+
+            self.rampPlotItem = self.graph1.plot(x, y, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR, style=Qt.PenStyle.DashLine))
+        
+        # current density and e-field limits
+        if self.JPlotItem != None:
+            self.graph1.getPlotItem().removeItem(self.JPlotItem)
+        if self.EPlotItem != None:
+            self.graph1.getPlotItem().removeItem(self.EPlotItem)
+        self.ELinePlotItem = self.graph1.getPlotItem().addLine(
+            y=params.e_field, pen=pg.mkPen(color=E_FIELD_COLOR_STR, style=Qt.PenStyle.DashLine)
+        )
+        j_limit = params.ramp_data.end if params.ramp_data.ramp else params.curr_density
+        self.JLinePlotItem = self.graph1.getPlotItem().addLine(
+            y=j_limit, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR, style=Qt.PenStyle.DashLine)
         )
 
     def connectionTogglePress(self):
@@ -204,6 +239,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.startButton.setDisabled(True) # prevent further presses
 
         self.signals.startSig.emit()
+
+        # clear previously plotted data
+        self.time = []
+        self.E = []
+        self.J = []
+        self.T = []
+        self.P = []
 
     def stopPress(self):
         self.stopButton.setDisabled(True) # prevent further presses
@@ -222,12 +264,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.P.append(data[3])
         self.T.append(data[4])
 
-        self.graph1.clear()
-        self.graph2.clear()
-        self.graph1.plot(self.time, self.E, pen=pg.mkPen(color=E_FIELD_COLOR_STR))
-        self.graph1.plot(self.time, self.J, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR))
-        self.graph2.plot(self.time, self.P, pen=pg.mkPen(color=POWER_DENSITY_COLOR_STR))
-        self.graph2.plot(self.time, self.T, pen=pg.mkPen(color=TEMPERATURE_COLOR_STR))
+        self.graph1.getPlotItem().removeItem(self.EPlotItem)
+        self.graph1.getPlotItem().removeItem(self.JPlotItem)
+        self.graph2.getPlotItem().removeItem(self.PPlotItem)
+        self.graph2.getPlotItem().removeItem(self.TPlotItem)
+        self.EPlotItem = self.graph1.plot(self.time, self.E, pen=pg.mkPen(color=E_FIELD_COLOR_STR))
+        self.JPlotItem = self.graph1.plot(self.time, self.J, pen=pg.mkPen(color=CURRENT_DENSITY_COLOR_STR))
+        self.PPlotItem = self.graph2.plot(self.time, self.P, pen=pg.mkPen(color=POWER_DENSITY_COLOR_STR))
+        self.TPlotItem = self.graph2.plot(self.time, self.T, pen=pg.mkPen(color=TEMPERATURE_COLOR_STR))
         
         self.readoutV.setText(f'V={data[5]}')
         self.readoutI.setText(f'I={data[6]}')
