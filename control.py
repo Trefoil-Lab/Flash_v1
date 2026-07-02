@@ -252,8 +252,7 @@ class RampRunner(Thread):
         if self.stop_event.is_set():
             sys.exit() # close thread
 
-        
-        if self.params.curr_density >= self.params.ramp_data.end:
+        if abs(self.params.curr_density - self.params.ramp_data.end) <= (self.params.ramp_data.rate * RAMP_INTERVAL_S):
             # if we are at the target...
             self.params.curr_density = self.params.ramp_data.end
             self.control_signals.setParamsDirectSig.emit(self.params)
@@ -261,7 +260,10 @@ class RampRunner(Thread):
             sys.exit() # close thread
         
         # adjust current density
-        self.params.curr_density += (self.params.ramp_data.rate * RAMP_INTERVAL_S)
+        if self.params.ramp_data.start < self.params.ramp_data.end:
+            self.params.curr_density += (self.params.ramp_data.rate * RAMP_INTERVAL_S)
+        else:
+            self.params.curr_density -= (self.params.ramp_data.rate * RAMP_INTERVAL_S)
         self.control_signals.setParamsDirectSig.emit(self.params)
 
         # schedule next move
